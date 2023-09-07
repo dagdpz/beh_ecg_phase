@@ -1,6 +1,5 @@
 function bep_analysis(dateStrings1, dateStrings2)
 tic
-numDates = numel(dateStrings1);
 % input example: dateStrings1 = ['20230511', '20230518', etc], dateStrings2 = ['2023-05-11', '2023-05-18', etc]
 hit_eventPhase_cell = {};
 miss_eventPhase_cell = {};
@@ -14,12 +13,6 @@ all_correctrejection_eventMeanPhases = [];
 all_falsealarm_eventMeanPhases = [];
 all_eventMeanPhases = [];
 all_not_eventMeanPhases = [];
-all_circ_otest1_results = [];
-all_circ_otest2_results = [];
-all_circ_otest3_results = [];
-all_circ_otest4_results = [];
-all_circ_otest5_results = [];
-all_circ_otest6_results = [];
 all_hit_eventMeanPhases_deg = [];
 all_miss_eventMeanPhases_deg = [];
 all_correctrejection_eventMeanPhases_deg = [];
@@ -27,140 +20,106 @@ all_falsealarm_eventMeanPhases_deg = [];
 all_eventMeanPhases_deg = [];
 all_not_eventMeanPhases_deg = [];
 % loading files
-a = 'Y:\Projects\Pulv_bodysignal\Magnus_SDT\';
-for num = 1:numDates
-    dateString1 = dateStrings1{num};
-    ecgFilename = [a dateString1 '_ecg.mat'];
-    ecg = load(ecgFilename);
-    dateString2 = dateStrings2{num};
-    filePattern = [a 'Magcombined' dateString2 '*.mat'];
+dataDir = 'Y:\Projects\Pulv_bodysignal\Magnus_SDT\';
+for num = 1:numel(dateStrings1)
+    filePattern = [dataDir 'Magcombined' dateStrings2{num} '*.mat'];
     fileList = dir(filePattern);
-    numFiles = numel(fileList);
-    Magcombined = cell(1, numFiles);
-    for i = 1:numFiles
-        names{i} = fileList(i).name;
-        loadedData = load([fileList(i).name]);
-        Magcombined{i} = loadedData;
-        blockId = arrayfun(@(x) str2double(x.name(32:33)), fileList);
-    end
-    % storing trials of each type in cells and converting to structures and arrays
-    for i = 1:numFiles
-        numTrials = numel(Magcombined{i}.trial);
-        idx_hit_trials{i} = false(1, numTrials);
-        idx_miss_trials{i} = false(1, numTrials);
-        idx_falsealarm_trials{i} = false(1, numTrials);
-        idx_correctrejection_trials{i} = false(1, numTrials);
-        for h = 1:numTrials
-            trialType = Magcombined{i}.trial(h).SDT_trial_type;
-            idx_hit_trials{i}(h) = trialType == 1;
-            idx_miss_trials{i}(h) = trialType == 2;
-            idx_falsealarm_trials{i}(h) = trialType == 3;
-            idx_correctrejection_trials{i}(h) = trialType == 4;
-        end
-        hit_trials_cell{i} = Magcombined{i}.trial(idx_hit_trials{i});
-        miss_trials_cell{i} = Magcombined{i}.trial(idx_miss_trials{i});
-        falsealarm_trials_cell{i} = Magcombined{i}.trial(idx_falsealarm_trials{i});
-        correctrejection_trials_cell{i} = Magcombined{i}.trial(idx_correctrejection_trials{i});
-        idx_completed_trials = [Magcombined{i}.trial.completed];
-        valid_indices2 = idx_completed_trials >= 1 & idx_completed_trials <= numTrials;
-        completed_trials{i} = Magcombined{i}.trial(valid_indices2);
-        idx_noncompleted_trials = ~[Magcombined{i}.trial.completed];
-        noncompleted_trials{i} = Magcombined{i}.trial(idx_noncompleted_trials);
-    end
-    noncompleted_trials_struct = struct('noncompleted', []);
-    completed_trials_struct = struct('completed', []);
-    hit_trials_struct = struct('hit', []);
-    miss_trials_struct = struct('miss', []);
-    falsealarm_trials_struct = struct('falsealarm', []);
-    correctrejection_trials_struct = struct('correctrejection', []);
-    for i = 1:numFiles
-        completed_trials_struct(i).completed = completed_trials{i};
-        noncompleted_trials_struct(i).noncompleted = noncompleted_trials{i};
-        hit_trials_struct(i).hit = hit_trials_cell{i};
-        miss_trials_struct(i).miss = miss_trials_cell{i};
-        falsealarm_trials_struct(i).falsealarm = falsealarm_trials_cell{i};
-        correctrejection_trials_struct(i).correctrejection = correctrejection_trials_cell{i};
-    end
-    completed_trials_array = struct2array(completed_trials_struct);
-    noncompleted_trials_array = struct2array(noncompleted_trials_struct);
-    event_times = cell(1, numel(completed_trials_array));
-    not_event_times1 = cell(1, numel(noncompleted_trials_array));
-    hit_trials = struct2array(hit_trials_struct);
-    miss_trials = struct2array(miss_trials_struct);
-    falsealarm_trials = struct2array(falsealarm_trials_struct);
-    correctrejection_trials = struct2array(correctrejection_trials_struct);
+    blockId = arrayfun(@(x) str2double(x.name(32:33)), fileList);
+    Magcombined = cellfun(@(x) load([dataDir filesep x]), {fileList.name}, 'UniformOutput', false);
     
-    hit_event_times = zeros(numel(hit_trials), 1);
-    miss_event_times = zeros(numel(miss_trials), 1);
-    correctrejection_event_times = zeros(numel(correctrejection_trials), 1);
-    falsealarm_event_times = zeros(numel(falsealarm_trials), 1);
+    ecgFilename = [dataDir dateStrings1{num} '_ecg.mat'];
+    ecg = load(ecgFilename);
+    ecg.out = ecg.out(blockId);
+    ecg.Tab_outlier = ecg.Tab_outlier(blockId);
     
-    
-    for q = 1:numel(completed_trials_array)
-        event_times{q} = completed_trials_array(q).TDT_state_onsets_aligned_to_1st_INI;
-    end
-    
-    numElements = numel(event_times);
-    for ne = 1:numElements
-        event_times1(ne) = event_times{ne}(1,1);
-    end
-    
-    for q2 = 1:numel(noncompleted_trials_array)
-        not_event_times1{q2} = noncompleted_trials_array(q2).TDT_state_onsets_aligned_to_1st_INI;
-    end
-    
-    numElements2 = numel(not_event_times1);
-    for ne1 = 1:numElements2
-        not_event_times(ne1) = not_event_times1{ne1}(1,1);
-    end
-    
-    for l = 1:numel(hit_trials)
-        hit_event_times(l) = event_times{l}(1, 1);
-    end
-    
-    for k = 1:numel(miss_trials)
-        miss_event_times(k) = event_times{k}(1, 1);
-    end
-    
-    for e = 1:numel(correctrejection_trials)
-        correctrejection_event_times(e) = event_times{e}(1, 1);
-    end
-    
-    for r = 1:numel(falsealarm_trials)
-        falsealarm_event_times(r) = event_times{r}(1, 1);
-    end
-    for l = 1:size(blockId,1)
-        n(l) = blockId(l);
-        idx = n(l);
-        ecgCycleDurations = [ecg.out(idx).R2R_t(ecg.out(idx).idx_valid_R2R_consec)];
-        R2R_t = [ecg.out(idx).R2R_t(ecg.out(idx).idx_valid_R2R_consec)];
-        R2R_valid = [ecg.out(idx).R2R_valid(ecg.out(idx).idx_valid_R2R_consec)];
-    end
-    numCycles = length(ecgCycleDurations);
-    for m = 1:numCycles
-        cycleStart = R2R_t(m)- R2R_valid(m);
-        cycleEnd = R2R_t(m);
-        cycleDuration = cycleEnd - cycleStart;
-        eventTimesCycle = event_times1((event_times1 >= cycleStart) & (event_times1 < cycleEnd));
-        eventTimesNorm((event_times1 >= cycleStart) & (event_times1 < cycleEnd)) = (eventTimesCycle - cycleStart) / cycleDuration;
-        not_eventTimesCycle = not_event_times((not_event_times >= cycleStart) & (not_event_times < cycleEnd));
-        not_eventTimesNorm((not_event_times >= cycleStart) & (not_event_times < cycleEnd)) = (not_eventTimesCycle - cycleStart) / cycleDuration;
-        hit_eventTimesCycle = hit_event_times((hit_event_times >= cycleStart) & (hit_event_times < cycleEnd));
-        hit_eventTimesNorm((hit_event_times >= cycleStart) & (hit_event_times < cycleEnd)) = (hit_eventTimesCycle - cycleStart) / cycleDuration;
-        miss_eventTimesCycle = miss_event_times((miss_event_times >= cycleStart) & (miss_event_times < cycleEnd));
-        miss_eventTimesNorm((miss_event_times >= cycleStart) & (miss_event_times < cycleEnd)) = (miss_eventTimesCycle - cycleStart) / cycleDuration;
-        falsealarm_eventTimesCycle = falsealarm_event_times((falsealarm_event_times >= cycleStart) & (falsealarm_event_times < cycleEnd));
-        falsealarm_eventTimesNorm((falsealarm_event_times >= cycleStart) & (falsealarm_event_times < cycleEnd)) = (falsealarm_eventTimesCycle - cycleStart) / cycleDuration;
-        correctrejection_eventTimesCycle = correctrejection_event_times((correctrejection_event_times >= cycleStart) & (correctrejection_event_times < cycleEnd));
-        correctrejection_eventTimesNorm((correctrejection_event_times >= cycleStart) & (correctrejection_event_times < cycleEnd)) = (correctrejection_eventTimesCycle - cycleStart) / cycleDuration;
+    % loop through blocks, compute event times throughout the whole session
+    blockEndTime = 0;
+%     B = [];
+    for blockNum = 2:length(Magcombined)
+        
+        blockEndTime = blockEndTime + Magcombined{blockNum - 1}.trial(end).TDT_state_onsets_aligned_to_1st_INI(end);
+        TDT_state_onsets_aligned_to_1st_INI = {Magcombined{blockNum}.trial.TDT_state_onsets_aligned_to_1st_INI};
+        TDT_state_onsets_aligned_to_1st_INI = cellfun(@(x) x + blockEndTime, TDT_state_onsets_aligned_to_1st_INI, 'UniformOutput', false);
+        [Magcombined{blockNum}.trial(:).TDT_state_onsets_aligned_to_1st_INI] = TDT_state_onsets_aligned_to_1st_INI{:};
+        
+        ecg.out(blockNum).Rpeak_t = ecg.out(blockNum).Rpeak_t + blockEndTime;
+        ecg.out(blockNum).R2R_t = ecg.out(blockNum).R2R_t + blockEndTime;
+        
+%         A = cellfun(@transpose, TDT_state_onsets_aligned_to_1st_INI, 'UniformOutput', false);
+%         B = [B, A];
+%         figure, plot([B{:}])
         
     end
-    hit_eventPhase = 2*pi*hit_eventTimesNorm;
-    miss_eventPhase = 2*pi*miss_eventTimesNorm;
-    falsealarm_eventPhase = 2*pi*falsealarm_eventTimesNorm;
-    correctrejection_eventPhase = 2*pi*correctrejection_eventTimesNorm;
-    eventPhase = 2*pi*eventTimesNorm;
-    not_eventPhase = 2*pi*not_eventTimesNorm;
+    
+    % storing trials of each type in cells and converting to structures and arrays
+    for blockNum = 1:length(Magcombined)
+        
+        state4times = arrayfun(@(x) x.TDT_state_onsets_aligned_to_1st_INI(x.TDT_states == 2), Magcombined{blockNum}.trial, 'UniformOutput', false);
+        [Magcombined{blockNum}.trial(:).state4times] = state4times{:};
+        
+    end
+    
+    idx_hit_trials = cellfun(@(x) [x.trial.SDT_trial_type] == 1, Magcombined, 'UniformOutput', false);
+    idx_miss_trials = cellfun(@(x) [x.trial.SDT_trial_type] == 2, Magcombined, 'UniformOutput', false);
+    idx_falsealarm_trials = cellfun(@(x) [x.trial.SDT_trial_type] == 3, Magcombined, 'UniformOutput', false);
+    idx_correctrejection_trials = cellfun(@(x) [x.trial.SDT_trial_type] == 4, Magcombined, 'UniformOutput', false);
+    
+    idx_completed_trials = cellfun(@(x) logical([x.trial.completed]), Magcombined, 'UniformOutput', false);
+    idx_noncompleted_trials = cellfun(@not, idx_completed_trials, 'UniformOutput', false);
+    
+    hit_trials_cell = cellfun(@(x,y) x.trial(y), Magcombined, idx_hit_trials, 'UniformOutput', false);
+    miss_trials_cell = cellfun(@(x,y) x.trial(y), Magcombined, idx_miss_trials, 'UniformOutput', false);
+    falsealarm_trials_cell = cellfun(@(x,y) x.trial(y), Magcombined, idx_falsealarm_trials, 'UniformOutput', false);
+    correctrejection_trials_cell = cellfun(@(x,y) x.trial(y), Magcombined, idx_correctrejection_trials, 'UniformOutput', false);
+    
+    completed_trials = cellfun(@(x,y) x.trial(y), Magcombined, idx_completed_trials, 'UniformOutput', false);
+    noncompleted_trials = cellfun(@(x,y) x.trial(y), Magcombined, idx_noncompleted_trials, 'UniformOutput', false);
+    
+    completed_trials_array = [completed_trials{:}];
+    noncompleted_trials_array = [noncompleted_trials{:}];
+    hit_trials = [hit_trials_cell{:}];
+    miss_trials = [miss_trials_cell{:}];
+    falsealarm_trials = [falsealarm_trials_cell{:}];
+    correctrejection_trials = [correctrejection_trials_cell{:}];
+    
+    completed_event_times = [completed_trials_array.state4times];
+    not_event_times = [noncompleted_trials_array.state4times];
+    
+    hit_event_times = [hit_trials.state4times];
+    miss_event_times = [miss_trials.state4times];
+    correctrejection_event_times = [correctrejection_trials.state4times];
+    falsealarm_event_times = [falsealarm_trials.state4times];
+    
+	R2R_t = [ecg.out.R2R_t];
+    R2R_t = R2R_t([ecg.out.idx_valid_R2R_consec]); % take only consecutive RR-intervals
+	R2R_durations = [ecg.out.R2R_valid];
+    R2R_durations = R2R_durations([ecg.out.idx_valid_R2R_consec]); % take only consecutive RR-intervals
+    cycleStart = R2R_t - R2R_durations;
+    cycleEnd = R2R_t;
+    cycleDuration = cycleEnd - cycleStart;
+    eventTimesCycle = arrayfun(@(x,y) completed_event_times((completed_event_times >= x) & (completed_event_times < y)), cycleStart, cycleEnd, 'UniformOutput', false);
+    eventTimesNorm = arrayfun(@(x,y,z) (x{1} - y) / z, eventTimesCycle, cycleStart, cycleDuration, 'UniformOutput', false);
+    not_eventTimesCycle = arrayfun(@(x,y) not_event_times((not_event_times >= x) & (not_event_times < y)), cycleStart, cycleEnd, 'UniformOutput', false);
+    not_eventTimesNorm = arrayfun(@(x,y,z) (x{1} - y) / z, not_eventTimesCycle, cycleStart, cycleDuration, 'UniformOutput', false);
+    hit_eventTimesCycle = arrayfun(@(x,y) hit_event_times((hit_event_times >= x) & (hit_event_times < y)), cycleStart, cycleEnd, 'UniformOutput', false);
+    hit_eventTimesNorm = arrayfun(@(x,y,z) (x{1} - y) / z, hit_eventTimesCycle, cycleStart, cycleDuration, 'UniformOutput', false);
+    miss_eventTimesCycle = arrayfun(@(x,y) miss_event_times((miss_event_times >= x) & (miss_event_times < y)), cycleStart, cycleEnd, 'UniformOutput', false);
+    miss_eventTimesNorm = arrayfun(@(x,y,z) (x{1} - y) / z, miss_eventTimesCycle, cycleStart, cycleDuration, 'UniformOutput', false);
+    falsealarm_eventTimesCycle = ...
+        arrayfun(@(x,y) falsealarm_event_times((falsealarm_event_times >= x) & (falsealarm_event_times < y)), cycleStart, cycleEnd, 'UniformOutput', false);
+    falsealarm_eventTimesNorm = ...
+        arrayfun(@(x,y,z) (x{1} - y) / z, falsealarm_eventTimesCycle, cycleStart, cycleDuration, 'UniformOutput', false);
+    correctrejection_eventTimesCycle = ...
+        arrayfun(@(x,y) correctrejection_event_times((correctrejection_event_times >= x) & (correctrejection_event_times < y)), cycleStart, cycleEnd, 'UniformOutput', false);
+    correctrejection_eventTimesNorm = ...
+        arrayfun(@(x,y,z) (x{1} - y) / z, correctrejection_eventTimesCycle, cycleStart, cycleDuration, 'UniformOutput', false);
+    
+    hit_eventPhase = 2*pi*[hit_eventTimesNorm{:}];
+    miss_eventPhase = 2*pi*[miss_eventTimesNorm{:}];
+    falsealarm_eventPhase = 2*pi*[falsealarm_eventTimesNorm{:}];
+    correctrejection_eventPhase = 2*pi*[correctrejection_eventTimesNorm{:}];
+    eventPhase = 2*pi*[eventTimesNorm{:}];
+    not_eventPhase = 2*pi*[not_eventTimesNorm{:}];
     
     hit_eventPhase = mod(hit_eventPhase, 2*pi);
     miss_eventPhase = mod(miss_eventPhase, 2*pi);
